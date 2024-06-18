@@ -1,0 +1,7 @@
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\bin\Debug\TestProcess.exe.config
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\bin\Debug\TestProcess.exe
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\bin\Debug\TestProcess.pdb
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\obj\Debug\TestProcess.csproj.AssemblyReference.cache
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\obj\Debug\TestProcess.csproj.CoreCompileInputs.cache
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\obj\Debug\TestProcess.exe
+C:\Users\gdmit\Desktop\TestProcess\TestProcess\obj\Debug\TestProcess.pdb
