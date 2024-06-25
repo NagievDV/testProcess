@@ -3,125 +3,104 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace TestProcess
+class DefectSummary
 {
-    class TestResult
+    static void Main(string[] args)
     {
-        public string FullTestName { get; set; }
-        public List<TestDetail> TestDetails { get; set; }
-    }
+        string inputFilePath = "Тесты.txt";  // Путь к входному файлу
+        string outputFilePath = "DefectSummary.txt";  // Путь к выходному файлу
 
-    class TestDetail
-    {
-        public string TestType { get; set; }
-        public string ParameterName { get; set; }
-        public bool IsFailure { get; set; }
-    }
+        // Структура данных для хранения информации о браках
+        var defectData = new Dictionary<(string TestName, int DeviceNumber), Dictionary<string, int>>();
 
-    class Program
-    {
-        static void Main(string[] args)
+        string currentTestName = null;
+        int currentDeviceNumber = -1;
+        bool inTestFunctionSection = false;
+
+        foreach (var line in File.ReadLines(inputFilePath))
         {
-            string inputFilePath = "Тесты.txt";
-            string outputFilePath = "СводнаяТаблица.txt";
-
-            var testResults = ParseTestResults(inputFilePath);
-
-            var summary = testResults
-                .SelectMany(tr => tr.TestDetails.Select(td => new
-                {
-                    tr.FullTestName,
-                    td.TestType,
-                    td.ParameterName,
-                    td.IsFailure
-                }))
-                .GroupBy(x => new { x.FullTestName, x.TestType, x.ParameterName })
-                .Select(g => new
-                {
-                    g.Key.FullTestName,
-                    g.Key.TestType,
-                    g.Key.ParameterName,
-                    TotalTests = g.Count(),
-                    Failures = g.Count(x => x.IsFailure),
-                    Successes = g.Count(x => !x.IsFailure)
-                })
-                .OrderByDescending(x => x.Failures)
-                .ThenBy(x => x.FullTestName)
-                .ToList();
-
-            using (StreamWriter writer = new StreamWriter(outputFilePath))
+            // Проверка на название теста
+            if (line.StartsWith("."))
             {
-                writer.WriteLine("| Полное название теста       | Тип теста       | Параметр         | Всего тестов | Успешных тестов | Неуспешных тестов |");
-                writer.WriteLine("|-----------------------------|-----------------|------------------|--------------|-----------------|-------------------|");
-                foreach (var item in summary)
-                {
-                    writer.WriteLine($"| {item.FullTestName,-27} | {item.TestType,-15} | {item.ParameterName,-16} | {item.TotalTests,-12} | {item.Successes,-15} | {item.Failures,-17} |");
-                }
+                currentTestName = line.Trim(',', ' ');
+                inTestFunctionSection = false;
+                continue;
             }
 
-            Console.WriteLine("Обработка завершена. Результаты сохранены в файл: " + outputFilePath);
-        }
-
-        static List<TestResult> ParseTestResults(string inputFilePath)
-        {
-            var testResults = new List<TestResult>();
-            string[] lines = File.ReadAllLines(inputFilePath);
-
-            TestResult currentTest = null;
-            string currentTestType = null;
-            string currentDeviceNumber = null;
-
-            foreach (string line in lines)
+            // Проверка на начало секции TEST FUNCTION
+            if (line.Trim().Equals("TEST FUNCTION"))
             {
-                if (line.StartsWith("."))
-                {
-                    if (currentTest != null)
-                    {
-                        testResults.Add(currentTest);
-                    }
+                inTestFunctionSection = true;
+                continue;
+            }
 
-                    currentTest = new TestResult
-                    {
-                        FullTestName = line.Trim(),
-                        TestDetails = new List<TestDetail>()
-                    };
-                }
-                else if (line.StartsWith("N0:"))
+            // Проверка на номер прибора
+            if (line.StartsWith("    N0:"))
+            {
+                if (int.TryParse(line.Substring(8).Trim(), out int deviceNumber))
                 {
-                    currentDeviceNumber = line.Trim();
-                    if (currentTest != null)
-                    {
-                        currentTest.FullTestName += $" {currentDeviceNumber}";
-                    }
+                    currentDeviceNumber = deviceNumber;
                 }
-                else if (line.StartsWith("TEST CONTACT") || line.StartsWith("TEST FUNCTION") || line.StartsWith("TEST STATICS"))
-                {
-                    currentTestType = line.Trim();
-                }
-                else if (!string.IsNullOrWhiteSpace(line))
-                {
-                    var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length >= 4 && currentTest != null)
-                    {
-                        string parameterName = parts[0];
-                        bool isFailure = parts[3].StartsWith("C");
+                continue;
+            }
 
-                        currentTest.TestDetails.Add(new TestDetail
+            // Обработка строк с браком в секции TEST FUNCTION
+            if (currentTestName != null && currentDeviceNumber != -1 && inTestFunctionSection)
+            {
+                var parts = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    if (parts[i].StartsWith("C") && int.TryParse(parts[i].Substring(1), out _))
+                    {
+                        string defectClass = parts[i];
+                        var key = (currentTestName, currentDeviceNumber);
+
+                        if (!defectData.ContainsKey(key))
                         {
-                            TestType = currentTestType,
-                            ParameterName = parameterName,
-                            IsFailure = isFailure
-                        });
+                            defectData[key] = new Dictionary<string, int>();
+                        }
+
+                        if (!defectData[key].ContainsKey(defectClass))
+                        {
+                            defectData[key][defectClass] = 0;
+                        }
+
+                        defectData[key][defectClass]++;
                     }
                 }
             }
+        }
 
-            if (currentTest != null)
+        var allDefectClasses = defectData.SelectMany(d => d.Value.Keys).Distinct().OrderBy(c => c).ToList();
+
+        // Запись сводной таблицы в выходной файл
+        using (var writer = new StreamWriter(outputFilePath))
+        {
+            // Запись заголовков
+            writer.WriteLine("+----------------+---------------+--------------------+" + string.Join("", allDefectClasses.Select(c => "----------+")));
+            writer.WriteLine("| Название теста | Номер прибора | Общее количество   |" + string.Join("", allDefectClasses.Select(c => $" {c,-8} |")));
+            writer.WriteLine("+----------------+---------------+--------------------+" + string.Join("", allDefectClasses.Select(c => "----------+")));
+
+            // Запись данных
+            foreach (var entry in defectData)
             {
-                testResults.Add(currentTest);
+                var testName = entry.Key.TestName;
+                var deviceNumber = entry.Key.DeviceNumber;
+                var totalDefects = entry.Value.Values.Sum();
+                var defectCounts = entry.Value;
+
+                writer.Write($"| {testName,-14} | {deviceNumber,-13} | {totalDefects,-18} |");
+                foreach (var defectClass in allDefectClasses)
+                {
+                    writer.Write($" {(defectCounts.ContainsKey(defectClass) ? defectCounts[defectClass] : 0),-8} |");
+                }
+                writer.WriteLine();
             }
 
-            return testResults;
+            // Запись нижней границы таблицы
+            writer.WriteLine("+----------------+---------------+--------------------+" + string.Join("", allDefectClasses.Select(c => "----------+")));
         }
+
+        Console.WriteLine("Сводная таблица по браку записана в " + outputFilePath);
     }
 }
